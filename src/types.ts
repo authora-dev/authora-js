@@ -78,6 +78,7 @@ export interface Role {
   denyPermissions?: string[];
   stage?: string;
   maxSessionDuration?: number;
+  isBuiltin?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -193,7 +194,13 @@ export interface ListAgentDelegationsParams extends PaginationParams {
   direction?: 'issued' | 'received';
 }
 
-export type PolicyEffect = 'allow' | 'deny';
+export type PolicyEffect = 'ALLOW' | 'DENY';
+
+export interface PolicyPrincipals {
+  roles?: string[];
+  agents?: string[];
+  workspaces?: string[];
+}
 
 export interface Policy {
   id: string;
@@ -201,7 +208,7 @@ export interface Policy {
   name: string;
   description?: string;
   effect: PolicyEffect;
-  principals: string[];
+  principals: PolicyPrincipals;
   resources: string[];
   actions?: string[];
   conditions?: Record<string, unknown>;
@@ -216,7 +223,7 @@ export interface CreatePolicyParams {
   name: string;
   description?: string;
   effect: PolicyEffect;
-  principals: string[];
+  principals: PolicyPrincipals;
   resources: string[];
   actions?: string[];
   conditions?: Record<string, unknown>;
@@ -232,7 +239,7 @@ export interface UpdatePolicyParams {
   name?: string;
   description?: string;
   effect?: PolicyEffect;
-  principals?: string[];
+  principals?: PolicyPrincipals;
   resources?: string[];
   actions?: string[];
   conditions?: Record<string, unknown>;
@@ -613,4 +620,11 @@ export interface McpToolContext {
   timestamp: string;
   delegationToken?: string;
   verified: boolean;
+}
+
+export interface McpMiddlewareOptions {
+  resolvePublicKey: (agentId: string) => Promise<string | null>;
+  requiredPermissions?: string[];
+  onDenied?: (agentId: string, reason: string) => void;
+  onAuthenticated?: (context: McpToolContext) => void;
 }

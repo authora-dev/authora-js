@@ -62,7 +62,7 @@ export class AuthoraClient {
     this.delegations = new DelegationsResource(http);
     this.policies = new PoliciesResource(http);
     this.mcp = new McpResource(http);
-    this.audit = new AuditResource(http);
+    this.audit = new AuditResource(http, this.baseUrl, options.apiKey);
     this.notifications = new NotificationsResource(http);
     this.webhooks = new WebhooksResource(http);
     this.alerts = new AlertsResource(http);

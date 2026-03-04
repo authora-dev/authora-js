@@ -3,7 +3,7 @@ export { AuthoraAgent } from './agent.js';
 export { generateKeyPair, getPublicKey, sign, verify, buildSignaturePayload, toBase64Url, fromBase64Url, sha256Hash } from './crypto.js';
 export type { KeyPair } from './crypto.js';
 export { matchPermission, matchAnyPermission } from './permissions.js';
-export { AuthoraMCPGuard, protectTool } from './mcp.js';
+export { AuthoraMCPGuard, AuthoraMCPMiddleware, protectTool } from './mcp.js';
 
 export {
   AuthoraError,
@@ -21,7 +21,7 @@ export { PermissionsResource } from './resources/permissions.js';
 export { DelegationsResource } from './resources/delegations.js';
 export { PoliciesResource } from './resources/policies.js';
 export { McpResource } from './resources/mcp.js';
-export { AuditResource } from './resources/audit.js';
+export { AuditResource, type AuditStreamOptions } from './resources/audit.js';
 export { NotificationsResource } from './resources/notifications.js';
 export { WebhooksResource } from './resources/webhooks.js';
 export { AlertsResource } from './resources/alerts.js';
@@ -61,6 +61,7 @@ export type {
   ListAgentDelegationsParams,
   Policy,
   PolicyEffect,
+  PolicyPrincipals,
   CreatePolicyParams,
   ListPoliciesParams,
   UpdatePolicyParams,
@@ -113,5 +114,6 @@ export type {
   CreateAgentResult,
   McpAuthoraMetadata,
   McpGuardOptions,
+  McpMiddlewareOptions,
   McpToolContext,
 } from './types.js';

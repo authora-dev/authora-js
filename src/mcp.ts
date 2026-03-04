@@ -1,7 +1,7 @@
 import { buildSignaturePayload, verify } from './crypto.js';
 import { matchAnyPermission } from './permissions.js';
 import { AuthorizationError, AuthenticationError } from './errors.js';
-import type { McpAuthoraMetadata, McpGuardOptions, McpToolContext } from './types.js';
+import type { McpAuthoraMetadata, McpGuardOptions, McpToolContext, McpMiddlewareOptions } from './types.js';
 
 const MAX_DRIFT_MS = 5 * 60 * 1000;
 
@@ -76,6 +76,68 @@ export class AuthoraMCPGuard {
     }
 
     return { agentId: meta.agentId, timestamp: meta.timestamp, delegationToken: meta.delegationToken, verified: true };
+  }
+}
+
+export class AuthoraMCPMiddleware {
+  private readonly resolve: (agentId: string) => Promise<string | null>;
+  private readonly perms?: string[];
+  private readonly denied?: (agentId: string, reason: string) => void;
+  private readonly authenticated?: (context: McpToolContext) => void;
+
+  constructor(opts: McpMiddlewareOptions) {
+    if (!opts.resolvePublicKey) throw new Error('resolvePublicKey required');
+    this.resolve = opts.resolvePublicKey;
+    this.perms = opts.requiredPermissions;
+    this.denied = opts.onDenied;
+    this.authenticated = opts.onAuthenticated;
+  }
+
+  async authorize(params: Record<string, unknown>): Promise<McpToolContext> {
+    const meta = params['_authora'] as McpAuthoraMetadata | undefined;
+    if (!meta?.agentId || !meta.signature || !meta.timestamp)
+      throw new AuthenticationError('missing or incomplete _authora metadata');
+
+    const ts = new Date(meta.timestamp).getTime();
+    if (Number.isNaN(ts) || Math.abs(Date.now() - ts) > MAX_DRIFT_MS)
+      throw new AuthenticationError('timestamp expired or invalid');
+
+    const pubKey = await this.resolve(meta.agentId);
+    if (!pubKey) throw new AuthenticationError(`cannot resolve key for ${meta.agentId}`);
+
+    const payload = buildSignaturePayload('POST', '/mcp/proxy', meta.timestamp, null);
+    if (!verify(payload, meta.signature, pubKey)) {
+      this.denied?.(meta.agentId, 'signature verification failed');
+      throw new AuthenticationError('signature verification failed');
+    }
+
+    if (this.perms?.length) {
+      const tool = (params['name'] as string) ?? '';
+      const resource = tool ? `mcp:*:tool.${tool}` : '*:*:*';
+      if (!matchAnyPermission(this.perms, resource)) {
+        this.denied?.(meta.agentId, `denied for tool ${tool}`);
+        throw new AuthorizationError(`permission denied for tool ${tool}`);
+      }
+    }
+
+    const ctx: McpToolContext = {
+      agentId: meta.agentId,
+      timestamp: meta.timestamp,
+      delegationToken: meta.delegationToken,
+      verified: true,
+    };
+    this.authenticated?.(ctx);
+    return ctx;
+  }
+
+  wrapHandler<TArgs = Record<string, unknown>, TResult = unknown>(
+    handler: (args: TArgs, context: McpToolContext) => Promise<TResult>,
+  ): (params: Record<string, unknown>) => Promise<TResult> {
+    return async (params: Record<string, unknown>) => {
+      const ctx = await this.authorize(params);
+      const args = (params['arguments'] ?? {}) as TArgs;
+      return handler(args, ctx);
+    };
   }
 }
 
