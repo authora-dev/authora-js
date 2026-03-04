@@ -1,24 +1,10 @@
-// ---------------------------------------------------------------------------
-// SDK configuration
-// ---------------------------------------------------------------------------
-
-/** Configuration options for the AuthoraClient. */
 export interface AuthoraClientOptions {
-  /** API key used for authentication. Sent as `Authorization: Bearer <apiKey>`. */
   apiKey: string;
-  /** Base URL for the Authora API. Defaults to `https://api.authora.dev/api/v1`. */
   baseUrl?: string;
-  /** Request timeout in milliseconds. Defaults to 30000. */
   timeout?: number;
-  /** Custom headers to include in every request. */
   headers?: Record<string, string>;
 }
 
-// ---------------------------------------------------------------------------
-// Common / shared types
-// ---------------------------------------------------------------------------
-
-/** Standard paginated list response. */
 export interface PaginatedList<T> {
   items: T[];
   total: number;
@@ -26,15 +12,10 @@ export interface PaginatedList<T> {
   limit?: number;
 }
 
-/** Pagination query parameters. */
 export interface PaginationParams {
   page?: number;
   limit?: number;
 }
-
-// ---------------------------------------------------------------------------
-// Agents
-// ---------------------------------------------------------------------------
 
 export type AgentStatus = 'pending' | 'active' | 'suspended' | 'revoked';
 
@@ -84,11 +65,9 @@ export interface RotateKeyParams {
 export interface AgentVerification {
   valid: boolean;
   agent?: Agent;
+  identityDocument?: Record<string, unknown>;
+  signature?: string;
 }
-
-// ---------------------------------------------------------------------------
-// Roles
-// ---------------------------------------------------------------------------
 
 export interface Role {
   id: string;
@@ -126,10 +105,6 @@ export interface UpdateRoleParams {
   maxSessionDuration?: number;
 }
 
-// ---------------------------------------------------------------------------
-// Agent Role Assignments
-// ---------------------------------------------------------------------------
-
 export interface AgentRoleAssignment {
   agentId: string;
   roleId: string;
@@ -143,10 +118,6 @@ export interface AssignRoleParams {
   grantedBy?: string;
   expiresAt?: string;
 }
-
-// ---------------------------------------------------------------------------
-// Permissions
-// ---------------------------------------------------------------------------
 
 export interface PermissionCheckParams {
   agentId: string;
@@ -175,15 +146,11 @@ export interface BatchPermissionCheckResult {
   results: PermissionCheckResult[];
 }
 
-export interface EffectivePermission {
-  resource: string;
-  actions: string[];
-  source: string;
+export interface EffectivePermissions {
+  agentId: string;
+  permissions: string[];
+  denyPermissions: string[];
 }
-
-// ---------------------------------------------------------------------------
-// Delegations
-// ---------------------------------------------------------------------------
 
 export type DelegationStatus = 'active' | 'revoked' | 'expired';
 
@@ -192,18 +159,25 @@ export interface Delegation {
   issuerAgentId: string;
   targetAgentId: string;
   permissions: string[];
-  constraints?: Record<string, unknown>;
+  constraints?: DelegationConstraints;
   status: DelegationStatus;
   createdAt: string;
   updatedAt: string;
   expiresAt?: string;
 }
 
+export interface DelegationConstraints {
+  maxDepth?: number;
+  expiresAt?: string;
+  singleUse?: boolean;
+  allowedTargets?: string[];
+}
+
 export interface CreateDelegationParams {
   issuerAgentId: string;
   targetAgentId: string;
   permissions: string[];
-  constraints?: Record<string, unknown>;
+  constraints?: DelegationConstraints;
 }
 
 export interface DelegationVerification {
@@ -218,10 +192,6 @@ export interface VerifyDelegationParams {
 export interface ListAgentDelegationsParams extends PaginationParams {
   direction?: 'issued' | 'received';
 }
-
-// ---------------------------------------------------------------------------
-// Policies
-// ---------------------------------------------------------------------------
 
 export type PolicyEffect = 'allow' | 'deny';
 
@@ -297,10 +267,6 @@ export interface PolicyEvaluationResult {
   reason?: string;
 }
 
-// ---------------------------------------------------------------------------
-// MCP Servers
-// ---------------------------------------------------------------------------
-
 export type McpTransport = 'stdio' | 'sse' | 'http';
 
 export interface McpServer {
@@ -375,10 +341,6 @@ export interface McpProxyResponse {
   id?: string | number;
 }
 
-// ---------------------------------------------------------------------------
-// Audit
-// ---------------------------------------------------------------------------
-
 export interface AuditEvent {
   id: string;
   orgId?: string;
@@ -434,10 +396,6 @@ export interface AuditMetrics {
   [key: string]: unknown;
 }
 
-// ---------------------------------------------------------------------------
-// Notifications
-// ---------------------------------------------------------------------------
-
 export interface Notification {
   id: string;
   organizationId: string;
@@ -473,10 +431,6 @@ export interface MarkAllReadParams {
   userId?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Webhooks
-// ---------------------------------------------------------------------------
-
 export interface Webhook {
   id: string;
   organizationId: string;
@@ -505,10 +459,6 @@ export interface UpdateWebhookParams {
   secret?: string;
   enabled?: boolean;
 }
-
-// ---------------------------------------------------------------------------
-// Alerts
-// ---------------------------------------------------------------------------
 
 export interface Alert {
   id: string;
@@ -542,10 +492,6 @@ export interface UpdateAlertParams {
   enabled?: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// API Keys
-// ---------------------------------------------------------------------------
-
 export interface ApiKey {
   id: string;
   organizationId: string;
@@ -570,10 +516,6 @@ export interface ListApiKeysParams {
   organizationId: string;
 }
 
-// ---------------------------------------------------------------------------
-// Organizations
-// ---------------------------------------------------------------------------
-
 export interface Organization {
   id: string;
   name: string;
@@ -588,10 +530,6 @@ export interface CreateOrganizationParams {
 }
 
 export interface ListOrganizationsParams extends PaginationParams {}
-
-// ---------------------------------------------------------------------------
-// Workspaces
-// ---------------------------------------------------------------------------
 
 export interface Workspace {
   id: string;
@@ -610,4 +548,68 @@ export interface CreateWorkspaceParams {
 
 export interface ListWorkspacesParams extends PaginationParams {
   organizationId: string;
+}
+
+// Agent Runtime
+
+export interface AgentOptions {
+  agentId: string;
+  privateKey: string;
+  baseUrl?: string;
+  timeout?: number;
+  permissionsCacheTtl?: number;
+}
+
+export interface SignedRequestOptions {
+  method?: string;
+  body?: unknown;
+  query?: Record<string, string | number | boolean | undefined>;
+  headers?: Record<string, string>;
+}
+
+export interface SignedResponse<T = unknown> {
+  data: T;
+  status: number;
+  headers: Headers;
+}
+
+export interface AgentDelegateParams {
+  targetAgentId: string;
+  permissions: string[];
+  constraints?: DelegationConstraints;
+}
+
+export interface McpToolCallParams {
+  toolName: string;
+  arguments?: Record<string, unknown>;
+  method?: string;
+  id?: string | number;
+  delegationToken?: string;
+}
+
+export interface CreateAgentResult {
+  agent: Agent;
+  keyPair: { privateKey: string; publicKey: string };
+}
+
+// MCP Middleware
+
+export interface McpAuthoraMetadata {
+  agentId: string;
+  signature: string;
+  timestamp: string;
+  delegationToken?: string;
+}
+
+export interface McpGuardOptions {
+  resolvePublicKey: (agentId: string) => Promise<string | null>;
+  requiredPermissions?: string[];
+  onDenied?: (agentId: string, reason: string) => void;
+}
+
+export interface McpToolContext {
+  agentId: string;
+  timestamp: string;
+  delegationToken?: string;
+  verified: boolean;
 }

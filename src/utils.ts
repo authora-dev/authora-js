@@ -1,9 +1,3 @@
-/**
- * Convert a typed params object to a query-string-compatible record.
- *
- * Strips `undefined` and `null` values so they are not sent as query parameters.
- * Accepts any object and extracts its own enumerable string-keyed properties.
- */
 export function toQuery(
   params: object,
 ): Record<string, string | number | boolean | undefined> {

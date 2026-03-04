@@ -1,6 +1,3 @@
-/**
- * Base error class for all Authora SDK errors.
- */
 export class AuthoraError extends Error {
   public readonly statusCode: number;
   public readonly code?: string;
@@ -17,15 +14,10 @@ export class AuthoraError extends Error {
     this.statusCode = statusCode;
     this.code = code;
     this.details = details;
-
-    // Restore prototype chain (required for extending built-ins in TS)
     Object.setPrototypeOf(this, AuthoraError.prototype);
   }
 }
 
-/**
- * Thrown when an API request fails due to a network or connectivity issue.
- */
 export class NetworkError extends AuthoraError {
   constructor(message: string, details?: unknown) {
     super(message, 0, 'NETWORK_ERROR', details);
@@ -34,9 +26,6 @@ export class NetworkError extends AuthoraError {
   }
 }
 
-/**
- * Thrown when the request times out.
- */
 export class TimeoutError extends AuthoraError {
   constructor(message: string = 'Request timed out') {
     super(message, 408, 'TIMEOUT');
@@ -45,9 +34,6 @@ export class TimeoutError extends AuthoraError {
   }
 }
 
-/**
- * Thrown when authentication fails (401).
- */
 export class AuthenticationError extends AuthoraError {
   constructor(message: string = 'Authentication failed', details?: unknown) {
     super(message, 401, 'AUTHENTICATION_ERROR', details);
@@ -56,9 +42,6 @@ export class AuthenticationError extends AuthoraError {
   }
 }
 
-/**
- * Thrown when authorization fails (403).
- */
 export class AuthorizationError extends AuthoraError {
   constructor(message: string = 'Forbidden', details?: unknown) {
     super(message, 403, 'AUTHORIZATION_ERROR', details);
@@ -67,9 +50,6 @@ export class AuthorizationError extends AuthoraError {
   }
 }
 
-/**
- * Thrown when a requested resource is not found (404).
- */
 export class NotFoundError extends AuthoraError {
   constructor(message: string = 'Resource not found', details?: unknown) {
     super(message, 404, 'NOT_FOUND', details);
@@ -78,9 +58,6 @@ export class NotFoundError extends AuthoraError {
   }
 }
 
-/**
- * Thrown when the request is rate-limited (429).
- */
 export class RateLimitError extends AuthoraError {
   public readonly retryAfter?: number;
 
