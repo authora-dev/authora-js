@@ -86,6 +86,14 @@ export class AuthoraClient {
     });
   }
 
+  loadDelegatedAgent(options: Omit<AgentOptions, 'baseUrl' | 'timeout'> & { baseUrl?: string; timeout?: number; delegationToken: string }): AuthoraAgent {
+    return new AuthoraAgent({
+      ...options,
+      baseUrl: options.baseUrl ?? this.baseUrl,
+      timeout: options.timeout ?? this.timeout,
+    });
+  }
+
   async verifyAgent(agentId: string): Promise<AgentVerification> {
     return this.agents.verify(agentId);
   }

@@ -39,6 +39,7 @@ export class AuthoraAgent {
 
   private readonly privateKey: string;
   private readonly publicKey: string;
+  private readonly delegationToken?: string;
   private cachedAllow: string[] | null = null;
   private cachedDeny: string[] | null = null;
   private cacheTime = 0;
@@ -53,6 +54,7 @@ export class AuthoraAgent {
     this.baseUrl = (options.baseUrl ?? 'https://api.authora.dev/api/v1').replace(/\/+$/, '');
     this.timeout = options.timeout ?? 30_000;
     this.cacheTtl = options.permissionsCacheTtl ?? 300_000;
+    this.delegationToken = options.delegationToken;
   }
 
   async signedFetch<T = unknown>(path: string, opts: SignedRequestOptions = {}): Promise<SignedResponse<T>> {
@@ -157,7 +159,7 @@ export class AuthoraAgent {
           arguments: params.arguments,
           _authora: {
             agentId: this.agentId, signature: sig, timestamp,
-            ...(params.delegationToken ? { delegationToken: params.delegationToken } : {}),
+            ...((params.delegationToken ?? this.delegationToken) ? { delegationToken: params.delegationToken ?? this.delegationToken } : {}),
           },
         },
       },

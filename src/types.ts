@@ -558,6 +558,7 @@ export interface AgentOptions {
   baseUrl?: string;
   timeout?: number;
   permissionsCacheTtl?: number;
+  delegationToken?: string;
 }
 
 export interface SignedRequestOptions {
