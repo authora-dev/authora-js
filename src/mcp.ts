@@ -21,12 +21,16 @@ export class AuthoraMCPGuard {
   private readonly resolve: (agentId: string) => Promise<string | null>;
   private readonly perms?: string[];
   private readonly denied?: (agentId: string, reason: string) => void;
+  private readonly checkPerm?: (agentId: string, resource: string, action: string) => Promise<boolean>;
+  private readonly validateDeleg?: (delegationToken: string) => Promise<boolean>;
 
   constructor(opts: McpGuardOptions) {
     if (!opts.resolvePublicKey) throw new Error('resolvePublicKey required');
     this.resolve = opts.resolvePublicKey;
     this.perms = opts.requiredPermissions;
     this.denied = opts.onDenied;
+    this.checkPerm = opts.checkPermission;
+    this.validateDeleg = opts.validateDelegation;
   }
 
   middleware(): (req: McpReq, res: McpRes, next: McpNext) => Promise<void> {
@@ -75,6 +79,24 @@ export class AuthoraMCPGuard {
       }
     }
 
+    if (this.checkPerm) {
+      const tool = (params['name'] as string) ?? '';
+      const resource = tool ? `mcp:tool:${tool}` : '*';
+      const allowed = await this.checkPerm(meta.agentId, resource, 'execute');
+      if (!allowed) {
+        this.denied?.(meta.agentId, `server-side permission check failed for ${tool}`);
+        throw new AuthorizationError(`permission denied for tool ${tool}`);
+      }
+    }
+
+    if (this.validateDeleg && meta.delegationToken) {
+      const valid = await this.validateDeleg(meta.delegationToken);
+      if (!valid) {
+        this.denied?.(meta.agentId, 'delegation token validation failed');
+        throw new AuthorizationError('delegation token invalid or expired');
+      }
+    }
+
     return { agentId: meta.agentId, timestamp: meta.timestamp, delegationToken: meta.delegationToken, verified: true };
   }
 }
@@ -84,6 +106,8 @@ export class AuthoraMCPMiddleware {
   private readonly perms?: string[];
   private readonly denied?: (agentId: string, reason: string) => void;
   private readonly authenticated?: (context: McpToolContext) => void;
+  private readonly checkPerm?: (agentId: string, resource: string, action: string) => Promise<boolean>;
+  private readonly validateDeleg?: (delegationToken: string) => Promise<boolean>;
 
   constructor(opts: McpMiddlewareOptions) {
     if (!opts.resolvePublicKey) throw new Error('resolvePublicKey required');
@@ -91,6 +115,8 @@ export class AuthoraMCPMiddleware {
     this.perms = opts.requiredPermissions;
     this.denied = opts.onDenied;
     this.authenticated = opts.onAuthenticated;
+    this.checkPerm = opts.checkPermission;
+    this.validateDeleg = opts.validateDelegation;
   }
 
   async authorize(params: Record<string, unknown>): Promise<McpToolContext> {
@@ -117,6 +143,24 @@ export class AuthoraMCPMiddleware {
       if (!matchAnyPermission(this.perms, resource)) {
         this.denied?.(meta.agentId, `denied for tool ${tool}`);
         throw new AuthorizationError(`permission denied for tool ${tool}`);
+      }
+    }
+
+    if (this.checkPerm) {
+      const tool = (params['name'] as string) ?? '';
+      const resource = tool ? `mcp:tool:${tool}` : '*';
+      const allowed = await this.checkPerm(meta.agentId, resource, 'execute');
+      if (!allowed) {
+        this.denied?.(meta.agentId, `server-side permission check failed for ${tool}`);
+        throw new AuthorizationError(`permission denied for tool ${tool}`);
+      }
+    }
+
+    if (this.validateDeleg && meta.delegationToken) {
+      const valid = await this.validateDeleg(meta.delegationToken);
+      if (!valid) {
+        this.denied?.(meta.agentId, 'delegation token validation failed');
+        throw new AuthorizationError('delegation token invalid or expired');
       }
     }
 

@@ -1,5 +1,6 @@
 import type { HttpClient } from '../http.js';
 import type {
+  BulkRevokeResult,
   CreateDelegationParams,
   Delegation,
   DelegationVerification,
@@ -37,5 +38,9 @@ export class DelegationsResource {
       `/agents/${agentId}/delegations`,
       params ? { query: toQuery(params) } : undefined,
     );
+  }
+
+  async revokeAll(agentId: string): Promise<BulkRevokeResult> {
+    return this.http.post<BulkRevokeResult>(`/agents/${agentId}/delegations/revoke-all`);
   }
 }

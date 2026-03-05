@@ -40,6 +40,14 @@ export class McpResource {
     return this.http.post<McpTool>(`/mcp/servers/${serverId}/tools`, { body: params });
   }
 
+  async deleteServer(serverId: string): Promise<void> {
+    await this.http.delete(`/mcp/servers/${serverId}`);
+  }
+
+  async deleteTool(serverId: string, toolId: string): Promise<void> {
+    await this.http.delete(`/mcp/servers/${serverId}/tools/${toolId}`);
+  }
+
   async proxy(body: McpProxyRequest): Promise<McpProxyResponse> {
     return this.http.post<McpProxyResponse>('/mcp/proxy', { body });
   }

@@ -191,7 +191,10 @@ export class HttpClient {
     retryAfter?: number;
   } {
     if (body && typeof body === 'object') {
-      const obj = body as Record<string, unknown>;
+      let obj = body as Record<string, unknown>;
+      if (obj['error'] && typeof obj['error'] === 'object') {
+        obj = obj['error'] as Record<string, unknown>;
+      }
       return {
         message: typeof obj['message'] === 'string' ? obj['message'] : undefined,
         code: typeof obj['code'] === 'string' ? obj['code'] : undefined,

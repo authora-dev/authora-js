@@ -5,6 +5,7 @@ import type {
   ListPoliciesParams,
   PaginatedList,
   Policy,
+  PolicyVersion,
   PolicyEvaluationResult,
   PolicySimulationResult,
   SimulatePolicyParams,
@@ -73,13 +74,20 @@ export class PoliciesResource {
     return this.http.post<PolicySimulationResult>('/policies/simulate', { body: params });
   }
 
-  /**
-   * Evaluate policies for a given agent, resource, and action.
-   *
-   * @param params - Evaluation parameters.
-   * @returns The evaluation result.
-   */
   async evaluate(params: EvaluatePolicyParams): Promise<PolicyEvaluationResult> {
     return this.http.post<PolicyEvaluationResult>('/policies/evaluate', { body: params });
+  }
+
+  async listVersions(policyId: string): Promise<PolicyVersion[]> {
+    const res = await this.http.get<{ items: PolicyVersion[] }>(`/policies/${policyId}/versions`);
+    return res.items ?? (res as unknown as PolicyVersion[]);
+  }
+
+  async getVersion(policyId: string, version: number): Promise<PolicyVersion> {
+    return this.http.get<PolicyVersion>(`/policies/${policyId}/versions/${version}`);
+  }
+
+  async rollback(policyId: string, version: number, changedBy?: string): Promise<Policy> {
+    return this.http.post<Policy>(`/policies/${policyId}/rollback`, { body: { version, changedBy } });
   }
 }

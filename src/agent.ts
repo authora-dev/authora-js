@@ -21,6 +21,7 @@ import type {
   McpToolCallParams,
   AgentOptions,
   EffectivePermissions,
+  KeyRotationResult,
 } from './types.js';
 
 export { generateKeyPair, getPublicKey } from './crypto.js';
@@ -36,14 +37,17 @@ export class AuthoraAgent {
   public readonly agentId: string;
   public readonly baseUrl: string;
   public readonly timeout: number;
+  public readonly workspaceId?: string;
 
-  private readonly privateKey: string;
-  private readonly publicKey: string;
+  private privateKey: string;
+  private publicKey: string;
   private readonly delegationToken?: string;
   private cachedAllow: string[] | null = null;
   private cachedDeny: string[] | null = null;
   private cacheTime = 0;
   private readonly cacheTtl: number;
+  private readonly rotationIntervalDays?: number;
+  private readonly onKeyRotated?: (result: KeyRotationResult) => void | Promise<void>;
 
   constructor(options: AgentOptions) {
     if (!options.agentId) throw new Error('agentId required');
@@ -51,10 +55,42 @@ export class AuthoraAgent {
     this.agentId = options.agentId;
     this.privateKey = options.privateKey;
     this.publicKey = getPublicKey(options.privateKey);
+    this.workspaceId = options.workspaceId;
     this.baseUrl = (options.baseUrl ?? 'https://api.authora.dev/api/v1').replace(/\/+$/, '');
     this.timeout = options.timeout ?? 30_000;
     this.cacheTtl = options.permissionsCacheTtl ?? 300_000;
     this.delegationToken = options.delegationToken;
+    this.rotationIntervalDays = options.rotationIntervalDays;
+    this.onKeyRotated = options.onKeyRotated;
+  }
+
+  static async init(options: AgentOptions): Promise<AuthoraAgent> {
+    const agent = new AuthoraAgent(options);
+    if (options.rotationIntervalDays && options.rotationIntervalDays > 0) {
+      await agent.autoRotateIfNeeded();
+    }
+    return agent;
+  }
+
+  async autoRotateIfNeeded(): Promise<KeyRotationResult | null> {
+    if (!this.rotationIntervalDays || this.rotationIntervalDays <= 0) return null;
+
+    const profile = await this.getProfile();
+    const updatedAt = new Date(profile.updatedAt).getTime();
+    const ageMs = Date.now() - updatedAt;
+    const intervalMs = this.rotationIntervalDays * 24 * 60 * 60 * 1000;
+
+    if (ageMs < intervalMs) return null;
+
+    const result = await this.rotateKey();
+    this.privateKey = result.keyPair.privateKey;
+    this.publicKey = result.keyPair.publicKey;
+
+    if (this.onKeyRotated) {
+      await this.onKeyRotated(result);
+    }
+
+    return result;
   }
 
   async signedFetch<T = unknown>(path: string, opts: SignedRequestOptions = {}): Promise<SignedResponse<T>> {
@@ -138,10 +174,27 @@ export class AuthoraAgent {
   }
 
   async delegate(params: AgentDelegateParams): Promise<Delegation> {
+    const wsId = params.workspaceId ?? this.workspaceId;
     const { data } = await this.signedFetch<Delegation>('/delegations', {
       method: 'POST',
-      body: { issuerAgentId: this.agentId, targetAgentId: params.targetAgentId, permissions: params.permissions, constraints: params.constraints },
+      body: {
+        issuerAgentId: this.agentId,
+        targetAgentId: params.targetAgentId,
+        permissions: params.permissions,
+        constraints: params.constraints,
+        ...(wsId ? { workspaceId: wsId } : {}),
+      },
     });
+    return data;
+  }
+
+  async revokeAllDelegations(): Promise<{ revokedCount: number }> {
+    const { data } = await this.signedFetch<{ revokedCount: number }>(`/agents/${this.agentId}/delegations/revoke-all`, { method: 'POST' });
+    return data;
+  }
+
+  async updateProfile(params: { name?: string; description?: string; tags?: string[]; framework?: string; modelProvider?: string; modelId?: string }): Promise<Agent> {
+    const { data } = await this.signedFetch<Agent>(`/agents/${this.agentId}`, { method: 'PATCH', body: params });
     return data;
   }
 
@@ -158,7 +211,7 @@ export class AuthoraAgent {
           name: params.toolName,
           arguments: params.arguments,
           _authora: {
-            agentId: this.agentId, signature: sig, timestamp,
+            agentId: this.agentId, signature: sig, timestamp, mcpServerId: params.mcpServerId,
             ...((params.delegationToken ?? this.delegationToken) ? { delegationToken: params.delegationToken ?? this.delegationToken } : {}),
           },
         },
@@ -238,7 +291,10 @@ export class AuthoraAgent {
 
   private parseErr(body: unknown): { message?: string; code?: string; details?: unknown; retryAfter?: number } {
     if (body && typeof body === 'object') {
-      const o = body as Record<string, unknown>;
+      let o = body as Record<string, unknown>;
+      if (o['error'] && typeof o['error'] === 'object') {
+        o = o['error'] as Record<string, unknown>;
+      }
       return {
         message: typeof o['message'] === 'string' ? o['message'] : undefined,
         code: typeof o['code'] === 'string' ? o['code'] : undefined,

@@ -1,6 +1,7 @@
 import type { HttpClient } from '../http.js';
 import type {
   ApiKey,
+  RotatedApiKey,
   CreateApiKeyParams,
   ListApiKeysParams,
 } from '../types.js';
@@ -16,6 +17,10 @@ export class ApiKeysResource {
   async list(params: ListApiKeysParams): Promise<ApiKey[]> {
     const res = await this.http.get<{ items: ApiKey[] }>('/api-keys', { query: toQuery(params) });
     return res.items ?? (res as unknown as ApiKey[]);
+  }
+
+  async rotate(keyId: string): Promise<RotatedApiKey> {
+    return this.http.post<RotatedApiKey>(`/api-keys/${keyId}/rotate`);
   }
 
   async revoke(keyId: string): Promise<void> {

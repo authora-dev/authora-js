@@ -44,4 +44,12 @@ export class RolesResource {
   async listAgentRoles(agentId: string): Promise<{ agentId: string; roles: Role[] }> {
     return this.http.get<{ agentId: string; roles: Role[] }>(`/agents/${agentId}/roles`);
   }
+
+  async getAncestors(roleId: string): Promise<Role[]> {
+    return this.http.get<Role[]>(`/roles/${roleId}/ancestors`);
+  }
+
+  async getChildren(roleId: string): Promise<Role[]> {
+    return this.http.get<Role[]>(`/roles/${roleId}/children`);
+  }
 }

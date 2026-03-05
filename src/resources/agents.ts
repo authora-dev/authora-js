@@ -7,6 +7,7 @@ import type {
   ListAgentsParams,
   PaginatedList,
   RotateKeyParams,
+  UpdateAgentParams,
 } from '../types.js';
 import { toQuery } from '../utils.js';
 
@@ -23,6 +24,10 @@ export class AgentsResource {
 
   async get(agentId: string): Promise<Agent> {
     return this.http.get<Agent>(`/agents/${agentId}`);
+  }
+
+  async update(agentId: string, params: UpdateAgentParams): Promise<Agent> {
+    return this.http.patch<Agent>(`/agents/${agentId}`, { body: params });
   }
 
   async verify(agentId: string): Promise<AgentVerification> {

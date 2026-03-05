@@ -4,6 +4,7 @@ import type {
   ListWorkspacesParams,
   PaginatedList,
   Workspace,
+  WorkspaceStats,
 } from '../types.js';
 import { toQuery } from '../utils.js';
 
@@ -20,5 +21,9 @@ export class WorkspacesResource {
 
   async list(params: ListWorkspacesParams): Promise<PaginatedList<Workspace>> {
     return this.http.get<PaginatedList<Workspace>>('/workspaces', { query: toQuery(params) });
+  }
+
+  async getStats(workspaceId: string): Promise<WorkspaceStats> {
+    return this.http.get<WorkspaceStats>(`/workspaces/${workspaceId}/stats`);
   }
 }
