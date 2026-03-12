@@ -5,6 +5,7 @@ import type {
   McpProxyResponse,
   McpServer,
   McpTool,
+  McpToolDiscoveryResult,
   PaginatedList,
   RegisterMcpServerParams,
   RegisterMcpToolParams,
@@ -50,5 +51,13 @@ export class McpResource {
 
   async proxy(body: McpProxyRequest): Promise<McpProxyResponse> {
     return this.http.post<McpProxyResponse>('/mcp/proxy', { body });
+  }
+
+  /**
+   * Trigger tool discovery for an HTTP-transport MCP server.
+   * Calls the server's `tools/list` JSON-RPC method and syncs the tools.
+   */
+  async discoverTools(serverId: string): Promise<McpToolDiscoveryResult> {
+    return this.http.post<McpToolDiscoveryResult>(`/mcp/servers/${serverId}/discover`);
   }
 }

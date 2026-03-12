@@ -3,6 +3,7 @@ import type {
   CreateWorkspaceParams,
   ListWorkspacesParams,
   PaginatedList,
+  UpdateWorkspaceParams,
   Workspace,
   WorkspaceStats,
 } from '../types.js';
@@ -25,5 +26,17 @@ export class WorkspacesResource {
 
   async getStats(workspaceId: string): Promise<WorkspaceStats> {
     return this.http.get<WorkspaceStats>(`/workspaces/${workspaceId}/stats`);
+  }
+
+  async update(workspaceId: string, params: UpdateWorkspaceParams): Promise<Workspace> {
+    return this.http.patch<Workspace>(`/workspaces/${workspaceId}`, { body: params });
+  }
+
+  async delete(workspaceId: string): Promise<Workspace> {
+    return this.http.delete<Workspace>(`/workspaces/${workspaceId}`);
+  }
+
+  async restore(workspaceId: string): Promise<Workspace> {
+    return this.http.post<Workspace>(`/workspaces/${workspaceId}/restore`);
   }
 }

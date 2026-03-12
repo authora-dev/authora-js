@@ -1,7 +1,13 @@
 import { buildSignaturePayload, verify } from './crypto.js';
 import { matchAnyPermission } from './permissions.js';
 import { AuthorizationError, AuthenticationError } from './errors.js';
-import type { McpAuthoraMetadata, McpGuardOptions, McpToolContext, McpMiddlewareOptions } from './types.js';
+import type {
+  McpAuthoraMetadata,
+  McpGuardOptions,
+  McpToolContext,
+  McpMiddlewareOptions,
+  UserDelegationContext,
+} from './types.js';
 
 const MAX_DRIFT_MS = 5 * 60 * 1000;
 
@@ -23,6 +29,7 @@ export class AuthoraMCPGuard {
   private readonly denied?: (agentId: string, reason: string) => void;
   private readonly checkPerm?: (agentId: string, resource: string, action: string) => Promise<boolean>;
   private readonly validateDeleg?: (delegationToken: string) => Promise<boolean>;
+  private readonly validateDelegJwt?: (jwt: string) => Promise<UserDelegationContext | null>;
 
   constructor(opts: McpGuardOptions) {
     if (!opts.resolvePublicKey) throw new Error('resolvePublicKey required');
@@ -31,6 +38,7 @@ export class AuthoraMCPGuard {
     this.denied = opts.onDenied;
     this.checkPerm = opts.checkPermission;
     this.validateDeleg = opts.validateDelegation;
+    this.validateDelegJwt = opts.validateDelegationJwt;
   }
 
   middleware(): (req: McpReq, res: McpRes, next: McpNext) => Promise<void> {
@@ -97,7 +105,25 @@ export class AuthoraMCPGuard {
       }
     }
 
-    return { agentId: meta.agentId, timestamp: meta.timestamp, delegationToken: meta.delegationToken, verified: true };
+    // Validate user delegation JWT if present
+    let delegation: UserDelegationContext | undefined;
+    if (this.validateDelegJwt && meta.delegationJwt) {
+      const ctx = await this.validateDelegJwt(meta.delegationJwt);
+      if (!ctx) {
+        this.denied?.(meta.agentId, 'user delegation JWT validation failed');
+        throw new AuthorizationError('user delegation JWT invalid or expired');
+      }
+      delegation = ctx;
+    }
+
+    return {
+      agentId: meta.agentId,
+      timestamp: meta.timestamp,
+      delegationToken: meta.delegationToken,
+      delegationJwt: meta.delegationJwt,
+      delegation,
+      verified: true,
+    };
   }
 }
 
@@ -108,6 +134,7 @@ export class AuthoraMCPMiddleware {
   private readonly authenticated?: (context: McpToolContext) => void;
   private readonly checkPerm?: (agentId: string, resource: string, action: string) => Promise<boolean>;
   private readonly validateDeleg?: (delegationToken: string) => Promise<boolean>;
+  private readonly validateDelegJwt?: (jwt: string) => Promise<UserDelegationContext | null>;
 
   constructor(opts: McpMiddlewareOptions) {
     if (!opts.resolvePublicKey) throw new Error('resolvePublicKey required');
@@ -117,6 +144,7 @@ export class AuthoraMCPMiddleware {
     this.authenticated = opts.onAuthenticated;
     this.checkPerm = opts.checkPermission;
     this.validateDeleg = opts.validateDelegation;
+    this.validateDelegJwt = opts.validateDelegationJwt;
   }
 
   async authorize(params: Record<string, unknown>): Promise<McpToolContext> {
@@ -164,10 +192,23 @@ export class AuthoraMCPMiddleware {
       }
     }
 
+    // Validate user delegation JWT if present
+    let delegation: UserDelegationContext | undefined;
+    if (this.validateDelegJwt && meta.delegationJwt) {
+      const delegCtx = await this.validateDelegJwt(meta.delegationJwt);
+      if (!delegCtx) {
+        this.denied?.(meta.agentId, 'user delegation JWT validation failed');
+        throw new AuthorizationError('user delegation JWT invalid or expired');
+      }
+      delegation = delegCtx;
+    }
+
     const ctx: McpToolContext = {
       agentId: meta.agentId,
       timestamp: meta.timestamp,
       delegationToken: meta.delegationToken,
+      delegationJwt: meta.delegationJwt,
+      delegation,
       verified: true,
     };
     this.authenticated?.(ctx);

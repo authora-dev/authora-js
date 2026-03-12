@@ -30,6 +30,7 @@ export { OrganizationsResource } from './resources/organizations.js';
 export { WorkspacesResource } from './resources/workspaces.js';
 export { ApprovalsResource } from './resources/approvals.js';
 export { CreditsResource } from './resources/credits.js';
+export { UserDelegationsResource } from './resources/user-delegations.js';
 
 export type {
   AuthoraClientOptions,
@@ -59,6 +60,7 @@ export type {
   DelegationStatus,
   DelegationConstraints,
   CreateDelegationParams,
+  ListDelegationsParams,
   BulkRevokeResult,
   DelegationVerification,
   VerifyDelegationParams,
@@ -153,4 +155,19 @@ export type {
   CreditCheckoutParams,
   CreditCheckoutResult,
   WebhookEventType,
+  UserDelegationGrant,
+  UserDelegationGrantStatus,
+  ConsentMethod,
+  CreateUserDelegationParams,
+  ListUserDelegationParams,
+  UserDelegationToken,
+  IssueUserDelegationTokenParams,
+  RefreshUserDelegationTokenParams,
+  VerifyUserDelegationTokenResult,
+  DelegationRequestParams,
+  UserDelegationContext,
+  McpDelegationContext,
+  AgentDelegationJwt,
+  IssueAgentDelegationJwtParams,
+  VerifyAgentDelegationJwtResult,
 } from './types.js';

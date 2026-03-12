@@ -5,6 +5,7 @@ import type {
   Delegation,
   DelegationVerification,
   ListAgentDelegationsParams,
+  ListDelegationsParams,
   PaginatedList,
   VerifyDelegationParams,
 } from '../types.js';
@@ -29,8 +30,8 @@ export class DelegationsResource {
     return this.http.post<DelegationVerification>('/delegations/verify', { body: params });
   }
 
-  async list(): Promise<PaginatedList<Delegation>> {
-    return this.http.get<PaginatedList<Delegation>>('/delegations');
+  async list(params?: ListDelegationsParams): Promise<PaginatedList<Delegation>> {
+    return this.http.get<PaginatedList<Delegation>>('/delegations', params ? { query: toQuery(params) } : undefined);
   }
 
   async listByAgent(agentId: string, params?: ListAgentDelegationsParams): Promise<PaginatedList<Delegation>> {

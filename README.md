@@ -97,7 +97,7 @@ const agent = await authora.agents.create({
 // List agents with filters
 const { items, total } = await authora.agents.list({
   workspaceId: 'ws_456',
-  status: 'active',
+  status: 'ACTIVE',
   page: 1,
   limit: 25,
 });
@@ -201,9 +201,8 @@ batch.results.forEach((r, i) => {
 
 // Get effective permissions for an agent
 const effective = await authora.permissions.getEffective('agt_abc');
-effective.forEach((p) => {
-  console.log(`${p.resource}: ${p.actions.join(', ')} (from ${p.source})`);
-});
+console.log('Allowed:', effective.permissions);
+console.log('Denied:', effective.denyPermissions);
 ```
 
 ### Delegations
@@ -211,10 +210,14 @@ effective.forEach((p) => {
 ```typescript
 // Create a delegation
 const delegation = await authora.delegations.create({
+  workspaceId: 'ws_456',
   issuerAgentId: 'agt_abc',
   targetAgentId: 'agt_def',
   permissions: ['files:read', 'files:list'],
-  constraints: { maxDuration: 3600, scope: 'workspace' },
+  constraints: {
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+    maxDepth: 2,
+  },
 });
 
 // Get a delegation
@@ -228,8 +231,12 @@ const verification = await authora.delegations.verify({
   delegationId: 'del_123',
 });
 
-// List all delegations
-const { items } = await authora.delegations.list();
+// List all delegations (with optional workspace filter)
+const { items } = await authora.delegations.list({
+  workspaceId: 'ws_456',
+  page: 1,
+  limit: 20,
+});
 
 // List delegations for a specific agent
 const agentDelegations = await authora.delegations.listByAgent('agt_abc', {
@@ -247,8 +254,8 @@ const policy = await authora.policies.create({
   workspaceId: 'ws_456',
   name: 'allow-data-read',
   description: 'Allow all agents to read data resources',
-  effect: 'allow',
-  principals: ['agent:*'],
+  effect: 'ALLOW',
+  principals: { roles: ['data-reader'], agents: [], workspaces: [] },
   resources: ['data:*'],
   actions: ['read', 'list'],
   conditions: { environment: { equals: 'production' } },
@@ -454,6 +461,112 @@ const updated = await authora.alerts.update('alert_123', {
 await authora.alerts.delete('alert_123');
 ```
 
+### Approvals
+
+```typescript
+// Create an approval challenge
+const challenge = await authora.approvals.create({
+  organizationId: 'org_123',
+  workspaceId: 'ws_456',
+  agentId: 'agt_abc',
+  resource: 'production:database',
+  action: 'delete',
+  challengeType: 'tool_call',
+  toolName: 'drop_table',
+});
+
+console.log(challenge.status);    // 'PENDING'
+console.log(challenge.riskLevel); // 'HIGH'
+
+// Approve or deny
+const decided = await authora.approvals.decide(challenge.id, {
+  action: 'approve',
+  scope: 'once',
+  note: 'One-time approval for migration',
+  source: 'dashboard',
+});
+
+// Get approval stats
+const stats = await authora.approvals.stats();
+console.log(stats.pending, stats.approvedToday);
+
+// List approval challenges
+const { items } = await authora.approvals.list({
+  status: 'PENDING',
+  page: 1,
+  limit: 20,
+});
+
+// Escalation rules
+const rule = await authora.approvals.createEscalationRule({
+  name: 'high-risk-escalation',
+  riskLevels: ['HIGH', 'CRITICAL'],
+  steps: [{
+    delaySeconds: 300,
+    notifyUserIds: ['usr_admin1'],
+    channels: ['slack_channel', 'dashboard'],
+  }],
+});
+
+// Approval webhooks
+const webhook = await authora.approvals.createWebhook({
+  name: 'my-webhook',
+  url: 'https://example.com/hooks/approval',
+  secret: 'whsec_...',
+  eventTypes: ['challenge.created', 'challenge.decided'],
+});
+```
+
+### Credits
+
+```typescript
+// Get credit balance
+const balance = await authora.credits.balance();
+console.log(balance.balance);
+console.log(balance.lifetimePurchased);
+console.log(balance.lifetimeConsumed);
+
+// List credit transactions
+const { items } = await authora.credits.transactions({
+  type: 'consume',
+  limit: 20,
+});
+
+// Purchase credits
+const { url } = await authora.credits.checkout('starter');
+// Redirect user to url for payment
+```
+
+### User Delegations (RFC 8693)
+
+```typescript
+// Issue a token for a user delegation grant
+const token = await authora.userDelegations.issueToken('grant_123', {
+  agentFullId: 'org_abc/agt_xyz',
+  audience: 'mcp-server-123',
+  lifetimeSeconds: 3600,
+});
+
+console.log(token.token);     // EdDSA JWT
+console.log(token.expiresAt); // ISO 8601
+
+// Verify a user delegation token
+const verification = await authora.userDelegations.verifyToken(token.token);
+console.log(verification.valid);     // true
+console.log(verification.scopes);    // ['files:read', 'calendar:read']
+
+// List active grants for a user
+const grants = await authora.userDelegations.listByUser('user_123', {
+  status: 'ACTIVE',
+});
+
+// Revoke a grant
+await authora.userDelegations.revoke('grant_123', {
+  revokedBy: 'user_123',
+  reason: 'No longer needed',
+});
+```
+
 ### API Keys
 
 ```typescript
@@ -530,6 +643,183 @@ try {
 | `RateLimitError`      | 429         | Too many requests; includes retryAfter |
 | `TimeoutError`        | 408         | Request exceeded the timeout          |
 | `NetworkError`        | 0           | Network/connectivity failure          |
+
+---
+
+## Agent Runtime
+
+The `AuthoraAgent` class provides a full agent runtime with Ed25519 signed requests, client-side permission caching, delegation, and MCP tool calls.
+
+```typescript
+import { AuthoraClient, AuthoraAgent, generateKeyPair } from '@authora/sdk';
+
+const client = new AuthoraClient({ apiKey: 'authora_live_...' });
+
+// Create + activate an agent (generates keypair, calls create + activate)
+const { agent, keyPair } = await client.createAgent({
+  workspaceId: 'ws_456',
+  name: 'data-processor',
+  createdBy: 'admin',
+});
+
+// Load the agent runtime
+const runtime = client.loadAgent({
+  agentId: agent.id,
+  privateKey: keyPair.privateKey,
+});
+
+// All requests are Ed25519-signed automatically
+const profile = await runtime.getProfile();
+const doc = await runtime.getIdentityDocument();
+
+// Server-side permission check
+const { allowed, reason } = await runtime.checkPermission('files:read', 'read');
+
+// Batch permission check
+const results = await runtime.checkPermissions([
+  { resource: 'files:read', action: 'read' },
+  { resource: 'files:delete', action: 'delete' },
+]);
+
+// Client-side cached permission check (deny-first, 5-minute TTL)
+if (await runtime.hasPermission('mcp:server1:tool.query')) {
+  // MCP tool call through the gateway
+  const result = await runtime.callTool({
+    mcpServerId: 'mcp_server1',
+    toolName: 'query',
+    arguments: { sql: 'SELECT 1' },
+  });
+}
+
+// Delegate permissions to another agent
+const delegation = await runtime.delegate({
+  targetAgentId: 'agent_...',
+  permissions: ['files:read'],
+  constraints: {
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+    singleUse: true,
+  },
+});
+
+// Load a delegated agent
+const delegated = client.loadDelegatedAgent({
+  agentId: 'agent_target',
+  privateKey: targetKeyPair.privateKey,
+  delegationToken: delegation.id,
+});
+
+// Key rotation (generates new keypair, registers with server)
+const { agent: updated, keyPair: newKeyPair } = await runtime.rotateKey();
+
+// Lifecycle
+await runtime.suspend();
+const { agent: reactivated, keyPair: freshKeyPair } = await runtime.reactivate();
+await runtime.revoke();
+```
+
+### Agent Runtime Methods
+
+| Method | Description |
+|--------|-------------|
+| `signedFetch(path, options?)` | Core signed HTTP request with Ed25519 headers |
+| `checkPermission(resource, action, context?)` | Server-side permission check |
+| `checkPermissions(checks[])` | Batch server-side check |
+| `fetchPermissions()` | Fetch + cache allow/deny permission lists |
+| `hasPermission(resource)` | Client-side cached check (deny-first, 5-min TTL) |
+| `invalidatePermissionsCache()` | Clear cached permissions |
+| `delegate(params)` | Create a delegation token |
+| `callTool(params)` | MCP JSON-RPC proxy call with double-signed request |
+| `rotateKey()` | Generate new keypair and register with server |
+| `suspend()` | Suspend agent |
+| `reactivate()` | Reactivate with new keypair |
+| `revoke()` | Permanently revoke agent |
+| `getIdentityDocument()` | Get signed identity document (public endpoint) |
+| `getProfile()` | Get agent profile (signed request) |
+| `getPublicKey()` | Return base64url public key (sync) |
+
+---
+
+## Cryptography
+
+Ed25519 key generation, signing, and verification via `@noble/ed25519` (pure JS, no native dependencies).
+
+```typescript
+import { generateKeyPair, sign, verify, buildSignaturePayload, sha256Hash } from '@authora/sdk';
+
+// Generate Ed25519 keypair (base64url encoded)
+const { privateKey, publicKey } = generateKeyPair();
+
+// Sign a message
+const signature = sign('hello world', privateKey);
+
+// Verify a signature
+const valid = verify('hello world', signature, publicKey);
+
+// Build the canonical signature payload for HTTP requests
+const payload = buildSignaturePayload('POST', '/api/v1/agents', '2025-01-01T00:00:00.000Z', '{}');
+
+// SHA-256 hash (base64url)
+const hash = sha256Hash('request body');
+```
+
+---
+
+## MCP Middleware (Server-Side)
+
+Three components for MCP tool servers to verify and authorize agent requests:
+
+### AuthoraMCPGuard (Express Middleware)
+
+```typescript
+import { AuthoraMCPGuard, protectTool } from '@authora/sdk';
+
+const guard = new AuthoraMCPGuard({
+  resolvePublicKey: async (agentId) => {
+    // Fetch agent's public key from your store or Authora API
+    return publicKeyBase64url;
+  },
+  requiredPermissions: ['mcp:myserver:tool.*'],
+  onDenied: (agentId, reason) => console.log(`Denied ${agentId}: ${reason}`),
+});
+
+// As Express middleware
+app.use('/mcp', guard.middleware());
+
+// Or protect individual tool handlers
+app.post('/tools/echo', protectTool(guard, async (req, res) => {
+  res.json({ result: req.body.params.arguments.message });
+}));
+```
+
+### AuthoraMCPMiddleware (Handler Wrapping)
+
+```typescript
+import { AuthoraMCPMiddleware } from '@authora/sdk';
+
+const middleware = new AuthoraMCPMiddleware({
+  resolvePublicKey: async (agentId) => publicKeyBase64url,
+});
+
+// Wrap MCP tool handlers
+const protectedHandler = middleware.wrapHandler(async (args, context) => {
+  // context.agentId, context.verified, context.delegationToken
+  return { result: args.message };
+});
+```
+
+---
+
+## Permission Matching (Client-Side)
+
+```typescript
+import { matchPermission, matchAnyPermission } from '@authora/sdk';
+
+matchPermission('agents:*', 'agents:read');          // true
+matchPermission('mcp:*:tool.read_*', 'mcp:s1:tool.read_files'); // true
+matchPermission('agents:*', 'agents:read:all');      // false (segment count mismatch)
+
+matchAnyPermission(['files:read', 'files:*'], 'files:write'); // true
+```
 
 ---
 

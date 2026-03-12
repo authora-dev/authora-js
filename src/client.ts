@@ -23,6 +23,7 @@ import { OrganizationsResource } from './resources/organizations.js';
 import { WorkspacesResource } from './resources/workspaces.js';
 import { ApprovalsResource } from './resources/approvals.js';
 import { CreditsResource } from './resources/credits.js';
+import { UserDelegationsResource } from './resources/user-delegations.js';
 
 const DEFAULT_BASE_URL = 'https://api.authora.dev/api/v1';
 const DEFAULT_TIMEOUT = 30_000;
@@ -43,6 +44,7 @@ export class AuthoraClient {
   public readonly workspaces: WorkspacesResource;
   public readonly approvals: ApprovalsResource;
   public readonly credits: CreditsResource;
+  public readonly userDelegations: UserDelegationsResource;
 
   private readonly baseUrl: string;
   private readonly timeout: number;
@@ -75,6 +77,7 @@ export class AuthoraClient {
     this.workspaces = new WorkspacesResource(http);
     this.approvals = new ApprovalsResource(http);
     this.credits = new CreditsResource(http);
+    this.userDelegations = new UserDelegationsResource(http);
   }
 
   async createAgent(params: CreateAgentParams): Promise<CreateAgentResult> {

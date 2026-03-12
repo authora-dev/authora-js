@@ -22,6 +22,13 @@ import type {
   AgentOptions,
   EffectivePermissions,
   KeyRotationResult,
+  DelegationRequestParams,
+  UserDelegationToken,
+  IssueUserDelegationTokenParams,
+  RefreshUserDelegationTokenParams,
+  AgentDelegationJwt,
+  IssueAgentDelegationJwtParams,
+  VerifyAgentDelegationJwtResult,
 } from './types.js';
 
 export { generateKeyPair, getPublicKey } from './crypto.js';
@@ -193,12 +200,155 @@ export class AuthoraAgent {
     return data;
   }
 
-  async updateProfile(params: { name?: string; description?: string; tags?: string[]; framework?: string; modelProvider?: string; modelId?: string }): Promise<Agent> {
-    const { data } = await this.signedFetch<Agent>(`/agents/${this.agentId}`, { method: 'PATCH', body: params });
+  /**
+   * Delegate to another agent and immediately issue a JWT.
+   * This is the recommended path for agent-to-agent delegation (Phase 7 unified token).
+   *
+   * @returns The delegation record AND a signed JWT ready for use in tool calls.
+   */
+  async delegateWithJwt(
+    params: AgentDelegateParams,
+    jwtParams?: IssueAgentDelegationJwtParams,
+  ): Promise<{ delegation: Delegation; jwt: AgentDelegationJwt }> {
+    const delegation = await this.delegate(params);
+
+    const { data: jwt } = await this.signedFetch<AgentDelegationJwt>(
+      `/delegations/${delegation.id}/jwt`,
+      {
+        method: 'POST',
+        body: {
+          audience: jwtParams?.audience,
+          lifetimeSeconds: jwtParams?.lifetimeSeconds,
+        },
+      },
+    );
+
+    return { delegation, jwt };
+  }
+
+  /**
+   * Issue a JWT from an existing agent-to-agent delegation record.
+   * Used to refresh/re-issue JWTs when they expire (short-lived, 5-15 min).
+   */
+  async issueDelegationJwtFromRecord(
+    delegationId: string,
+    params?: IssueAgentDelegationJwtParams,
+  ): Promise<AgentDelegationJwt> {
+    const { data } = await this.signedFetch<AgentDelegationJwt>(
+      `/delegations/${delegationId}/jwt`,
+      {
+        method: 'POST',
+        body: {
+          audience: params?.audience,
+          lifetimeSeconds: params?.lifetimeSeconds,
+        },
+      },
+    );
     return data;
   }
 
-  async callTool(params: McpToolCallParams): Promise<McpProxyResponse> {
+  /**
+   * Verify an agent delegation JWT.
+   */
+  async verifyAgentDelegationJwt(
+    token: string,
+    audience?: string,
+  ): Promise<VerifyAgentDelegationJwtResult> {
+    const { data } = await this.signedFetch<VerifyAgentDelegationJwtResult>(
+      '/delegations/verify-jwt',
+      {
+        method: 'POST',
+        body: { token, audience },
+      },
+    );
+    return data;
+  }
+
+  // -- User Delegation Methods --
+
+  /**
+   * Generate a consent URL for user delegation.
+   * The user should be redirected to this URL to authenticate and approve scoped delegation.
+   *
+   * @param params - Delegation request parameters
+   * @returns The full consent URL to redirect the user to
+   */
+  createDelegationRequest(params: DelegationRequestParams): string {
+    const consentBase = this.baseUrl.replace('/api/v1', '');
+    const url = new URL(`${consentBase}/delegate`);
+    url.searchParams.set('agent_id', this.agentId);
+    url.searchParams.set('workspace_id', params.workspaceId);
+    url.searchParams.set('scope', params.scopes.join(','));
+    if (params.maxDuration) url.searchParams.set('max_duration', String(params.maxDuration));
+    if (params.reason) url.searchParams.set('reason', params.reason);
+    url.searchParams.set('redirect_uri', params.redirectUri);
+    url.searchParams.set('state', params.state ?? crypto.randomUUID());
+    return url.toString();
+  }
+
+  /**
+   * Issue a delegation JWT from a grant.
+   * Called after the user has approved delegation via the consent flow.
+   *
+   * @param grantId - The delegation grant ID received from the consent callback
+   * @param params - Token issuance parameters
+   * @returns The signed delegation JWT and metadata
+   */
+  async issueDelegationToken(
+    grantId: string,
+    params?: Partial<IssueUserDelegationTokenParams>,
+  ): Promise<UserDelegationToken> {
+    const agentFullId = `agent:authora:${this.workspaceId ?? 'unknown'}:${this.agentId}`;
+    const { data } = await this.signedFetch<UserDelegationToken>(
+      `/user-delegations/${grantId}/token`,
+      {
+        method: 'POST',
+        body: {
+          agentFullId: params?.agentFullId ?? agentFullId,
+          audience: params?.audience,
+          lifetimeSeconds: params?.lifetimeSeconds,
+        },
+      },
+    );
+    return data;
+  }
+
+  /**
+   * Refresh a delegation JWT.
+   *
+   * @param grantId - The delegation grant ID
+   * @param params - Refresh parameters
+   * @returns A fresh delegation JWT
+   */
+  async refreshDelegationToken(
+    grantId: string,
+    params?: Partial<RefreshUserDelegationTokenParams>,
+  ): Promise<UserDelegationToken> {
+    const agentFullId = `agent:authora:${this.workspaceId ?? 'unknown'}:${this.agentId}`;
+    const { data } = await this.signedFetch<UserDelegationToken>(
+      `/user-delegations/${grantId}/refresh`,
+      {
+        method: 'POST',
+        body: {
+          agentFullId: params?.agentFullId ?? agentFullId,
+          currentToken: params?.currentToken,
+          audience: params?.audience,
+        },
+      },
+    );
+    return data;
+  }
+
+  /**
+   * Call an MCP tool with a user delegation JWT.
+   * The JWT is passed in the `_authora.delegationJwt` field.
+   *
+   * @param params - Tool call parameters (must include delegationJwt)
+   * @returns The MCP proxy response
+   */
+  async callToolAsDelegated(
+    params: McpToolCallParams & { delegationJwt: string },
+  ): Promise<McpProxyResponse> {
     const timestamp = new Date().toISOString();
     const sig = sign(buildSignaturePayload('POST', '/mcp/proxy', timestamp, null), this.privateKey);
     const { data } = await this.signedFetch<McpProxyResponse>('/mcp/proxy', {
@@ -211,9 +361,53 @@ export class AuthoraAgent {
           name: params.toolName,
           arguments: params.arguments,
           _authora: {
-            agentId: this.agentId, signature: sig, timestamp, mcpServerId: params.mcpServerId,
-            ...((params.delegationToken ?? this.delegationToken) ? { delegationToken: params.delegationToken ?? this.delegationToken } : {}),
+            agentId: this.agentId,
+            signature: sig,
+            timestamp,
+            mcpServerId: params.mcpServerId,
+            delegationJwt: params.delegationJwt,
           },
+        },
+      },
+    });
+    return data;
+  }
+
+  async updateProfile(params: { name?: string; description?: string; tags?: string[]; framework?: string; modelProvider?: string; modelId?: string }): Promise<Agent> {
+    const { data } = await this.signedFetch<Agent>(`/agents/${this.agentId}`, { method: 'PATCH', body: params });
+    return data;
+  }
+
+  async callTool(params: McpToolCallParams): Promise<McpProxyResponse> {
+    const timestamp = new Date().toISOString();
+    const sig = sign(buildSignaturePayload('POST', '/mcp/proxy', timestamp, null), this.privateKey);
+
+    // Build _authora metadata: prefer JWT over legacy record-ID token
+    const authoraMeta: Record<string, unknown> = {
+      agentId: this.agentId,
+      signature: sig,
+      timestamp,
+      mcpServerId: params.mcpServerId,
+    };
+
+    if (params.delegationJwt) {
+      // Unified JWT path (Phase 7: agent-to-agent or user delegation)
+      authoraMeta.delegationJwt = params.delegationJwt;
+    } else if (params.delegationToken ?? this.delegationToken) {
+      // Legacy record-ID path (deprecated, backward compat)
+      authoraMeta.delegationToken = params.delegationToken ?? this.delegationToken;
+    }
+
+    const { data } = await this.signedFetch<McpProxyResponse>('/mcp/proxy', {
+      method: 'POST',
+      body: {
+        jsonrpc: '2.0',
+        id: params.id ?? `${this.agentId}-${Date.now()}`,
+        method: params.method ?? 'tools/call',
+        params: {
+          name: params.toolName,
+          arguments: params.arguments,
+          _authora: authoraMeta,
         },
       },
     });

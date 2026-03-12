@@ -33,6 +33,9 @@ export interface Agent {
   framework?: string;
   modelProvider?: string;
   modelId?: string;
+  suspendedBy?: string;
+  revokedBy?: string;
+  updatedBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -89,6 +92,8 @@ export interface Role {
   maxSessionDuration?: number;
   parentRoleId?: string | null;
   isBuiltin?: boolean;
+  createdBy?: string;
+  updatedBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -175,6 +180,8 @@ export interface Delegation {
   constraints?: DelegationConstraints;
   parentDelegationId?: string;
   status: DelegationStatus;
+  createdBy?: string;
+  revokedBy?: string;
   createdAt: string;
   updatedAt: string;
   expiresAt?: string;
@@ -188,11 +195,45 @@ export interface DelegationConstraints {
 }
 
 export interface CreateDelegationParams {
+  workspaceId?: string;
   issuerAgentId: string;
   targetAgentId: string;
   permissions: string[];
   constraints?: DelegationConstraints;
   parentDelegationId?: string;
+}
+
+export interface ListDelegationsParams {
+  workspaceId?: string;
+  page?: number;
+  limit?: number;
+}
+
+/** JWT issued from an agent-to-agent delegation record */
+export interface AgentDelegationJwt {
+  token: string;
+  jti: string;
+  expiresAt: string;
+  issuedAt: string;
+  delegationId: string;
+}
+
+/** Parameters for issuing an agent delegation JWT */
+export interface IssueAgentDelegationJwtParams {
+  audience?: string | string[];
+  lifetimeSeconds?: number;
+}
+
+/** Result of verifying an agent delegation JWT */
+export interface VerifyAgentDelegationJwtResult {
+  valid: boolean;
+  error?: string;
+  delegationId?: string;
+  issuerAgentId?: string;
+  targetAgentId?: string;
+  scopes?: string[];
+  workspaceId?: string;
+  jti?: string;
 }
 
 export interface BulkRevokeResult {
@@ -233,6 +274,8 @@ export interface Policy {
   priority?: number;
   enabled?: boolean;
   version?: number;
+  createdBy?: string;
+  updatedBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -324,6 +367,8 @@ export interface McpServer {
   connectionTimeout?: number;
   maxRetries?: number;
   status?: string;
+  createdBy?: string;
+  updatedBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -481,6 +526,8 @@ export interface Webhook {
   eventTypes: string[];
   secret: string;
   enabled?: boolean;
+  createdBy?: string;
+  updatedBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -511,6 +558,8 @@ export interface Alert {
   conditions: Record<string, unknown>;
   channels: Record<string, unknown>[];
   enabled?: boolean;
+  createdBy?: string;
+  updatedBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -547,6 +596,7 @@ export interface ApiKey {
   rotatedFromId?: string | null;
   gracePeriodEndsAt?: string | null;
   expiresAt?: string;
+  revokedBy?: string;
   createdAt: string;
 }
 
@@ -574,6 +624,8 @@ export interface Organization {
   id: string;
   name: string;
   slug: string;
+  createdBy?: string;
+  updatedBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -590,6 +642,10 @@ export interface Workspace {
   organizationId: string;
   name: string;
   slug: string;
+  status?: string;
+  deletedAt?: string | null;
+  createdBy?: string;
+  updatedBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -600,8 +656,20 @@ export interface CreateWorkspaceParams {
   slug: string;
 }
 
+export interface UpdateWorkspaceParams {
+  name?: string;
+  slug?: string;
+}
+
 export interface ListWorkspacesParams extends PaginationParams {
   organizationId: string;
+}
+
+export interface McpToolDiscoveryResult {
+  discovered: number;
+  created: number;
+  updated: number;
+  removed: number;
 }
 
 export interface WorkspaceStats {
@@ -657,7 +725,10 @@ export interface McpToolCallParams {
   arguments?: Record<string, unknown>;
   method?: string;
   id?: string | number;
+  /** @deprecated Use delegationJwt instead for unified JWT-based delegation */
   delegationToken?: string;
+  /** Agent delegation JWT (EdDSA-signed, unified token architecture) */
+  delegationJwt?: string;
 }
 
 export interface CreateAgentResult {
@@ -672,6 +743,8 @@ export interface McpAuthoraMetadata {
   signature: string;
   timestamp: string;
   delegationToken?: string;
+  /** User delegation JWT (RFC 8693 compatible, Ed25519-signed) */
+  delegationJwt?: string;
 }
 
 export interface McpGuardOptions {
@@ -680,12 +753,18 @@ export interface McpGuardOptions {
   onDenied?: (agentId: string, reason: string) => void;
   checkPermission?: (agentId: string, resource: string, action: string) => Promise<boolean>;
   validateDelegation?: (delegationToken: string) => Promise<boolean>;
+  /** Validate a user delegation JWT and return the delegation context */
+  validateDelegationJwt?: (jwt: string) => Promise<UserDelegationContext | null>;
 }
 
 export interface McpToolContext {
   agentId: string;
   timestamp: string;
   delegationToken?: string;
+  /** User delegation JWT (RFC 8693, Ed25519-signed) */
+  delegationJwt?: string;
+  /** Parsed user delegation context (if delegationJwt was validated) */
+  delegation?: UserDelegationContext;
   verified: boolean;
 }
 
@@ -696,6 +775,8 @@ export interface McpMiddlewareOptions {
   onAuthenticated?: (context: McpToolContext) => void;
   checkPermission?: (agentId: string, resource: string, action: string) => Promise<boolean>;
   validateDelegation?: (delegationToken: string) => Promise<boolean>;
+  /** Validate a user delegation JWT and return the delegation context */
+  validateDelegationJwt?: (jwt: string) => Promise<UserDelegationContext | null>;
 }
 
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'DENIED' | 'EXPIRED';
@@ -1009,4 +1090,130 @@ export type WebhookEventType =
   | 'approval.pattern.policy_created'
   | 'credits.purchased'
   | 'credits.consumed'
-  | 'credits.insufficient';
+  | 'credits.insufficient'
+  | 'user_delegation.consent_initiated'
+  | 'user_delegation.consent_approved'
+  | 'user_delegation.consent_denied'
+  | 'user_delegation.grant_created'
+  | 'user_delegation.grant_revoked'
+  | 'user_delegation.grant_expired'
+  | 'user_delegation.grant_exhausted'
+  | 'user_delegation.jwt_issued'
+  | 'user_delegation.jwt_renewed'
+  | 'user_delegation.jwt_rejected'
+  | 'user_delegation.action_performed';
+
+// -- User Delegation --
+
+export type UserDelegationGrantStatus = 'ACTIVE' | 'REVOKED' | 'EXPIRED' | 'EXHAUSTED';
+export type ConsentMethod = 'hosted_page' | 'sdk' | 'slack';
+
+export interface UserDelegationGrant {
+  id: string;
+  userId: string;
+  userEmail: string;
+  agentId: string;
+  agentOrgId: string;
+  userOrgId: string;
+  userWorkspaceId: string;
+  trustRelationshipId?: string | null;
+  requestedScopes: string[];
+  grantedScopes: string[];
+  maxUses: number | null;
+  useCount: number;
+  noRedelegation: boolean;
+  maxDurationSeconds: number;
+  renewalIntervalSec: number;
+  reason?: string | null;
+  consentMethod: ConsentMethod;
+  status: UserDelegationGrantStatus;
+  revokedBy?: string | null;
+  revokedReason?: string | null;
+  expiresAt: string;
+  lastRenewedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateUserDelegationParams {
+  userId: string;
+  userEmail: string;
+  userIdpSubject: string;
+  userIdpProvider: string;
+  agentId: string;
+  agentOrgId: string;
+  userOrgId: string;
+  userWorkspaceId: string;
+  trustRelationshipId?: string;
+  requestedScopes: string[];
+  grantedScopes: string[];
+  maxUses?: number;
+  noRedelegation?: boolean;
+  maxDurationSeconds: number;
+  renewalIntervalSec?: number;
+  reason?: string;
+  consentMethod: ConsentMethod;
+  platformSignature: string;
+  expiresAt: string;
+}
+
+export interface ListUserDelegationParams {
+  status?: UserDelegationGrantStatus;
+}
+
+export interface UserDelegationToken {
+  token: string;
+  jti: string;
+  expiresAt: string;
+  issuedAt: string;
+  grantExpiresAt: string;
+}
+
+export interface IssueUserDelegationTokenParams {
+  agentFullId: string;
+  audience?: string | string[];
+  lifetimeSeconds?: number;
+}
+
+export interface RefreshUserDelegationTokenParams {
+  agentFullId: string;
+  currentToken?: string;
+  audience?: string | string[];
+}
+
+export interface VerifyUserDelegationTokenResult {
+  valid: boolean;
+  revoked: boolean;
+  grantId?: string;
+  userId?: string;
+  agentFullId?: string;
+  scopes?: string[];
+  isCrossOrg?: boolean;
+  jti?: string;
+  error?: string;
+}
+
+export interface DelegationRequestParams {
+  workspaceId: string;
+  scopes: string[];
+  maxDuration?: number;
+  reason?: string;
+  redirectUri: string;
+  state?: string;
+}
+
+export interface UserDelegationContext {
+  grantId: string;
+  userId: string;
+  userEmail: string;
+  userOrgId: string;
+  agentOrgId: string;
+  scopes: string[];
+  isCrossOrg: boolean;
+  reason?: string;
+}
+
+export interface McpDelegationContext extends McpToolContext {
+  /** User delegation context (present when acting via user delegation JWT) */
+  delegation?: UserDelegationContext;
+}
