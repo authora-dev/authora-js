@@ -1,5 +1,8 @@
 # @authora/sdk
 
+[![npm version](https://img.shields.io/npm/v/@authora/sdk.svg)](https://www.npmjs.com/package/@authora/sdk)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 Official TypeScript/JavaScript SDK for the [Authora](https://authora.dev) platform -- agent identity, authorization, and delegation management for AI systems.
 
 - **Zero runtime dependencies** -- uses native `fetch`
@@ -291,6 +294,50 @@ const evaluation = await authora.policies.evaluate({
   agentId: 'agt_abc',
   resource: 'data:users',
   action: 'write',
+});
+
+// Attach a policy to an agent
+const attachment = await authora.policies.attachToTarget({
+  policyId: 'pol_123',
+  targetType: 'agent',
+  targetId: 'agt_abc',
+});
+
+// Attach a policy to an MCP server
+await authora.policies.attachToTarget({
+  policyId: 'pol_123',
+  targetType: 'mcp_server',
+  targetId: 'mcp_xyz',
+});
+
+// Add permissions to an existing attached policy (avoids creating new policies)
+const updated = await authora.policies.addPermission({
+  policyId: 'pol_123',
+  resources: ['mcp:server1:tool.new_tool'],
+  actions: ['execute'],
+});
+
+// Remove permissions from a policy
+await authora.policies.removePermission({
+  policyId: 'pol_123',
+  resources: ['mcp:server1:tool.old_tool'],
+  actions: ['execute'],
+});
+
+// List all policies attached to an agent
+const agentPolicies = await authora.policies.listAttachments({
+  targetType: 'agent',
+  targetId: 'agt_abc',
+});
+
+// List all targets a policy is attached to
+const targets = await authora.policies.listPolicyTargets('pol_123');
+
+// Detach a policy
+await authora.policies.detachFromTarget({
+  policyId: 'pol_123',
+  targetType: 'agent',
+  targetId: 'agt_abc',
 });
 ```
 
@@ -841,6 +888,10 @@ import type {
 ```
 
 ---
+
+## Examples
+
+See the [`examples/`](./examples) directory for runnable code samples including a [quickstart](./examples/quickstart.ts).
 
 ## Requirements
 

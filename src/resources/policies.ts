@@ -1,13 +1,18 @@
 import type { HttpClient } from '../http.js';
 import type {
+  AttachPolicyParams,
+  AddPermissionParams,
   CreatePolicyParams,
   EvaluatePolicyParams,
+  ListAttachmentsParams,
   ListPoliciesParams,
   PaginatedList,
   Policy,
+  PolicyAttachment,
   PolicyVersion,
   PolicyEvaluationResult,
   PolicySimulationResult,
+  RemovePermissionParams,
   SimulatePolicyParams,
   UpdatePolicyParams,
 } from '../types.js';
@@ -89,5 +94,56 @@ export class PoliciesResource {
 
   async rollback(policyId: string, version: number, changedBy?: string): Promise<Policy> {
     return this.http.post<Policy>(`/policies/${policyId}/rollback`, { body: { version, changedBy } });
+  }
+
+  /**
+   * Attach a policy to an agent or MCP server.
+   * Idempotent -- returns existing attachment if already attached.
+   */
+  async attachToTarget(params: AttachPolicyParams): Promise<PolicyAttachment> {
+    return this.http.post<PolicyAttachment>('/policies/attachments', { body: params });
+  }
+
+  /**
+   * Detach a policy from an agent or MCP server by composite key.
+   */
+  async detachFromTarget(params: AttachPolicyParams): Promise<void> {
+    await this.http.post<void>('/policies/detach', { body: params });
+  }
+
+  /**
+   * Detach a policy attachment by its ID.
+   */
+  async detachById(attachmentId: string): Promise<void> {
+    await this.http.delete<void>(`/policies/attachments/${attachmentId}`);
+  }
+
+  /**
+   * List all policies attached to a specific agent or MCP server.
+   */
+  async listAttachments(params: ListAttachmentsParams): Promise<PaginatedList<PolicyAttachment>> {
+    return this.http.get<PaginatedList<PolicyAttachment>>('/policies/attachments', { query: toQuery(params) });
+  }
+
+  /**
+   * List all targets (agents and MCP servers) a policy is attached to.
+   */
+  async listPolicyTargets(policyId: string): Promise<PaginatedList<PolicyAttachment>> {
+    return this.http.get<PaginatedList<PolicyAttachment>>(`/policies/${policyId}/attachments`);
+  }
+
+  /**
+   * Add resources and/or actions to an existing policy without replacing current ones.
+   * Use this to update permissions on an already-attached policy instead of creating a new one.
+   */
+  async addPermission(params: AddPermissionParams): Promise<Policy> {
+    return this.http.post<Policy>('/policies/add-permission', { body: params });
+  }
+
+  /**
+   * Remove specific resources and/or actions from an existing policy.
+   */
+  async removePermission(params: RemovePermissionParams): Promise<Policy> {
+    return this.http.post<Policy>('/policies/remove-permission', { body: params });
   }
 }

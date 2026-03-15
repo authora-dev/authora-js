@@ -353,6 +353,41 @@ export interface PolicyEvaluationResult {
   reason?: string;
 }
 
+export type PolicyAttachmentTargetType = 'agent' | 'mcp_server';
+
+export interface PolicyAttachment {
+  id: string;
+  policyId: string;
+  targetType: PolicyAttachmentTargetType;
+  targetId: string;
+  createdBy?: string;
+  createdAt: string;
+  policy?: Policy | null;
+}
+
+export interface AttachPolicyParams {
+  policyId: string;
+  targetType: PolicyAttachmentTargetType;
+  targetId: string;
+}
+
+export interface ListAttachmentsParams {
+  targetType: PolicyAttachmentTargetType;
+  targetId: string;
+}
+
+export interface AddPermissionParams {
+  policyId: string;
+  resources?: string[];
+  actions?: string[];
+}
+
+export interface RemovePermissionParams {
+  policyId: string;
+  resources?: string[];
+  actions?: string[];
+}
+
 export type McpTransport = 'stdio' | 'sse' | 'http';
 
 export interface McpServer {
