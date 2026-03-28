@@ -44,6 +44,7 @@ export { WorkspacesResource } from './resources/workspaces.js';
 export { ApprovalsResource } from './resources/approvals.js';
 export { CreditsResource } from './resources/credits.js';
 export { UserDelegationsResource } from './resources/user-delegations.js';
+export { AgentGroupsResource } from './resources/agent-groups.js';
 
 export type {
   AuthoraClientOptions,
@@ -189,4 +190,11 @@ export type {
   AgentDelegationJwt,
   IssueAgentDelegationJwtParams,
   VerifyAgentDelegationJwtResult,
+  AgentGroup,
+  AgentGroupMember,
+  CreateAgentGroupParams,
+  ListAgentGroupsParams,
+  UpdateAgentGroupParams,
+  BulkAssignRoleParams,
+  BulkAssignRoleResult,
 } from './types.js';

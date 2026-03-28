@@ -259,6 +259,56 @@ export interface PolicyPrincipals {
   roles?: string[];
   agents?: string[];
   workspaces?: string[];
+  agentTags?: string[];
+  agentGroups?: string[];
+}
+
+// -- Agent Groups --
+
+export interface AgentGroup {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description: string;
+  memberCount?: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentGroupMember {
+  groupId: string;
+  agentId: string;
+  addedBy: string;
+  addedAt: string;
+  agentName?: string;
+  agentStatus?: string;
+  agentTags?: string[];
+}
+
+export interface CreateAgentGroupParams {
+  workspaceId: string;
+  name: string;
+  description?: string;
+}
+
+export interface ListAgentGroupsParams {
+  workspaceId: string;
+}
+
+export interface UpdateAgentGroupParams {
+  name?: string;
+  description?: string;
+}
+
+export interface BulkAssignRoleParams {
+  roleId: string;
+  agentIds?: string[];
+  tags?: string[];
+}
+
+export interface BulkAssignRoleResult {
+  assignedCount: number;
 }
 
 export interface Policy {

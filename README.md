@@ -35,7 +35,7 @@ console.log(result.allowed ? 'Access granted' : 'Denied');
   - [Organizations](#organizations) | [Workspaces](#workspaces) | [Agents](#agents) | [Roles](#roles) | [Permissions](#permissions)
   - [Delegations](#delegations) | [Policies](#policies) | [MCP Servers](#mcp-servers)
   - [Audit](#audit) | [Notifications](#notifications) | [Webhooks](#webhooks) | [Alerts](#alerts)
-  - [Approvals](#approvals) | [Credits](#credits) | [User Delegations (RFC 8693)](#user-delegations-rfc-8693) | [API Keys](#api-keys)
+  - [Agent Groups](#agent-groups) | [Approvals](#approvals) | [Credits](#credits) | [User Delegations (RFC 8693)](#user-delegations-rfc-8693) | [API Keys](#api-keys)
 - [Error Handling](#error-handling)
 - [Agent Runtime](#agent-runtime)
 - [Cryptography](#cryptography)
@@ -652,6 +652,30 @@ const grants = await authora.userDelegations.listByUser('user_123', {
 await authora.userDelegations.revoke('grant_123', {
   revokedBy: 'user_123',
   reason: 'No longer needed',
+});
+```
+
+### Agent Groups
+
+```typescript
+// Create a group and add members
+const group = await authora.agentGroups.create({
+  workspaceId: 'ws_456', name: 'billing-agents',
+});
+await authora.agentGroups.addMembers(group.id, ['agt_abc', 'agt_def']);
+
+// List members and groups
+const members = await authora.agentGroups.listMembers(group.id);
+const groups = await authora.agents.listGroups('agt_abc');
+
+// Bulk assign role by tag
+await authora.agents.bulkAssignRole({ roleId: 'role_123', tags: ['production'] });
+
+// Target policies by group or tag
+await authora.policies.create({
+  workspaceId: 'ws_456', name: 'billing-access', effect: 'ALLOW',
+  principals: { agentGroups: ['grp_abc'], agentTags: ['billing'] },
+  resources: ['billing:*'], actions: ['read', 'write'],
 });
 ```
 
