@@ -15,6 +15,19 @@ export {
   TimeoutError,
 } from './errors.js';
 
+export {
+  EdgeRateLimitError,
+  ApprovalRequiredError,
+  EdgeRoutingError,
+  EdgeIdentityError,
+  EdgePermissionError,
+  EdgeDelegationError,
+  EdgeEpochMismatchError,
+  EdgeCircuitOpenError,
+  EdgePayloadTooLargeError,
+  parseEdgeError,
+} from './edge-errors.js';
+
 export { AgentsResource } from './resources/agents.js';
 export { RolesResource } from './resources/roles.js';
 export { PermissionsResource } from './resources/permissions.js';

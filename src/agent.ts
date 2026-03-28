@@ -9,6 +9,7 @@ import {
   RateLimitError,
   TimeoutError,
 } from './errors.js';
+import { parseEdgeError, EdgeRoutingError } from './edge-errors.js';
 import type {
   Agent,
   AgentVerification,
@@ -43,6 +44,7 @@ const HEADERS = {
 export class AuthoraAgent {
   public readonly agentId: string;
   public readonly baseUrl: string;
+  public readonly edgeUrl?: string;
   public readonly timeout: number;
   public readonly workspaceId?: string;
 
@@ -64,6 +66,7 @@ export class AuthoraAgent {
     this.publicKey = getPublicKey(options.privateKey);
     this.workspaceId = options.workspaceId;
     this.baseUrl = (options.baseUrl ?? 'https://api.authora.dev/api/v1').replace(/\/+$/, '');
+    this.edgeUrl = options.edgeUrl?.replace(/\/+$/, '');
     this.timeout = options.timeout ?? 30_000;
     this.cacheTtl = options.permissionsCacheTtl ?? 300_000;
     this.delegationToken = options.delegationToken;
@@ -398,20 +401,86 @@ export class AuthoraAgent {
       authoraMeta.delegationToken = params.delegationToken ?? this.delegationToken;
     }
 
+    const rpcBody = {
+      jsonrpc: '2.0',
+      id: params.id ?? `${this.agentId}-${Date.now()}`,
+      method: params.method ?? 'tools/call',
+      params: {
+        name: params.toolName,
+        arguments: params.arguments,
+        _authora: authoraMeta,
+      },
+    };
+
+    // Edge-first: try edgeUrl, fall back to origin on network or routing errors
+    if (this.edgeUrl) {
+      try {
+        return await this.callToolViaUrl(this.edgeUrl, rpcBody);
+      } catch (err: unknown) {
+        // Fall back to origin on network errors or edge routing failures
+        const isNetworkErr = err instanceof NetworkError || err instanceof TimeoutError;
+        const isRoutingErr = err instanceof EdgeRoutingError;
+        if (!isNetworkErr && !isRoutingErr) throw err;
+      }
+    }
+
+    // Origin path (default or fallback)
     const { data } = await this.signedFetch<McpProxyResponse>('/mcp/proxy', {
       method: 'POST',
-      body: {
-        jsonrpc: '2.0',
-        id: params.id ?? `${this.agentId}-${Date.now()}`,
-        method: params.method ?? 'tools/call',
-        params: {
-          name: params.toolName,
-          arguments: params.arguments,
-          _authora: authoraMeta,
-        },
-      },
+      body: rpcBody,
     });
     return data;
+  }
+
+  /**
+   * POST an MCP JSON-RPC body to a specific URL and handle edge error codes.
+   */
+  private async callToolViaUrl(baseUrl: string, rpcBody: Record<string, unknown>): Promise<McpProxyResponse> {
+    const url = `${baseUrl}/proxy/mcp`;
+    const bodyStr = JSON.stringify(rpcBody);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.timeout);
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: bodyStr,
+        signal: ctrl.signal,
+      });
+    } catch (err: unknown) {
+      clearTimeout(timer);
+      if (err instanceof DOMException && err.name === 'AbortError')
+        throw new TimeoutError(`Edge callTool timed out`);
+      throw new NetworkError(`Edge callTool failed: ${err instanceof Error ? err.message : 'unknown'}`, err);
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const data = (await res.json()) as Record<string, unknown>;
+
+    // Check for JSON-RPC error with edge-specific codes
+    if (data.error && typeof data.error === 'object') {
+      const rpcErr = data.error as Record<string, unknown>;
+      const code = typeof rpcErr.code === 'number' ? rpcErr.code : 0;
+      const edgeErr = parseEdgeError(code, rpcErr.data as Record<string, unknown>);
+      if (edgeErr) throw edgeErr;
+    }
+
+    if (!res.ok) {
+      throw new AuthoraError(
+        `Edge callTool HTTP ${res.status}`,
+        res.status,
+        'EDGE_HTTP_ERROR',
+        data,
+      );
+    }
+
+    return (data.result ?? data) as McpProxyResponse;
   }
 
   async rotateKey(): Promise<{ agent: Agent; keyPair: { privateKey: string; publicKey: string } }> {

@@ -727,6 +727,8 @@ export interface AgentOptions {
   privateKey: string;
   workspaceId?: string;
   baseUrl?: string;
+  /** Edge proxy URL (e.g. https://mcp.authora.dev). When set, callTool tries edge first, falling back to origin on network or routing errors. */
+  edgeUrl?: string;
   timeout?: number;
   permissionsCacheTtl?: number;
   delegationToken?: string;
