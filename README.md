@@ -3,12 +3,46 @@
 [![npm version](https://img.shields.io/npm/v/@authora/sdk.svg)](https://www.npmjs.com/package/@authora/sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Official TypeScript/JavaScript SDK for the [Authora](https://authora.dev) platform -- agent identity, authorization, and delegation management for AI systems.
+Authorization for AI agents -- identity, permissions, and delegation management.
 
-- **Zero runtime dependencies** -- uses native `fetch`
-- **Full TypeScript support** with strict types and JSDoc
-- **ES modules + CommonJS** dual output
-- **Works in Node.js 18+** and modern browsers
+## Quick Start
+
+```typescript
+// npm install @authora/sdk
+import { AuthoraClient } from '@authora/sdk';
+
+const authora = new AuthoraClient({ apiKey: 'authora_live_...' });
+
+// Create an agent
+const { agent } = await authora.agents.create({
+  workspaceId: 'ws_...', name: 'my-agent', createdBy: 'usr_...',
+});
+
+// Check a permission
+const result = await authora.permissions.check({
+  agentId: agent.id, resource: 'files:reports/*', action: 'read',
+});
+console.log(result.allowed ? 'Access granted' : 'Denied');
+```
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Getting Credentials](#getting-credentials)
+- [Configuration](#configuration)
+- [Edge Endpoints](#edge-endpoints)
+- [Resources](#resources)
+  - [Organizations](#organizations) | [Workspaces](#workspaces) | [Agents](#agents) | [Roles](#roles) | [Permissions](#permissions)
+  - [Delegations](#delegations) | [Policies](#policies) | [MCP Servers](#mcp-servers)
+  - [Audit](#audit) | [Notifications](#notifications) | [Webhooks](#webhooks) | [Alerts](#alerts)
+  - [Approvals](#approvals) | [Credits](#credits) | [User Delegations (RFC 8693)](#user-delegations-rfc-8693) | [API Keys](#api-keys)
+- [Error Handling](#error-handling)
+- [Agent Runtime](#agent-runtime)
+- [Cryptography](#cryptography)
+- [MCP Middleware (Server-Side)](#mcp-middleware-server-side)
+- [Permission Matching (Client-Side)](#permission-matching-client-side)
+- [TypeScript](#typescript)
+- [Examples](#examples)
 
 ## Installation
 
@@ -20,17 +54,20 @@ pnpm add @authora/sdk
 yarn add @authora/sdk
 ```
 
-## Quick Start
+## Getting Credentials
 
-```typescript
-import { AuthoraClient } from '@authora/sdk';
+**Automatic (IDE agents):** If you use Claude Code, Cursor, or OpenCode, credentials are created automatically on first run via browser sign-in. See [self-onboarding instructions](https://authora.dev/llms-onboard.txt).
 
-const authora = new AuthoraClient({
-  apiKey: 'authora_live_...',
-  // baseUrl: 'https://api.authora.dev/api/v1',  // default
-  // timeout: 30000,                               // default (ms)
-});
-```
+**Manual:** Sign up at [authora.dev/get-started](https://authora.dev/get-started), then create an API key in the [dashboard](https://client.authora.dev/agent-setup).
+
+**Environment variables (Docker/CI):** Set `AUTHORA_API_KEY`, `AUTHORA_AGENT_ID`, `AUTHORA_ORG_ID`, `AUTHORA_WORKSPACE_ID`.
+
+## Features
+
+- **Zero runtime dependencies** -- uses native `fetch`
+- **Full TypeScript support** with strict types and JSDoc
+- **ES modules + CommonJS** dual output
+- **Works in Node.js 18+** and modern browsers
 
 ## Configuration
 
